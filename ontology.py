@@ -72,7 +72,7 @@ class MetaEdge(AbstractEdge):
 
 
 class Node(AbstractNode):
-    def __init__(self, cls: AbstractNode, name: str, attribute_values: Optional[Dict[str, Any]]):
+    def __init__(self, cls: AbstractNode, name: str, attribute_values: Optional[Dict[str, Any]] = None):
         super().__init__(name=name)
         self.cls: AbstractNode = cls
         if attribute_values is None:
@@ -103,7 +103,7 @@ class Edge(AbstractEdge):
         self.attribute_values: Dict[str, Any] = attribute_values
 
     def to_label(self) -> str:
-        return super().to_label()[:-1] + f"""{''.join(f'<br align="left"/>{label} = {value}' 
+        return super().to_label()[:-1] + f"""{''.join(f'<br align="left"/>{label} = {value}'
                                                       for label, value in sorted(self.attribute_values.items()))}>"""
 
 
@@ -134,7 +134,7 @@ class Topology:
         print("Graph saved in", filename)
 
 
-class Onthology:
+class Ontology:
     def __init__(self):
         self.meta_nodes: Dict[str, MetaNode] = dict()
         self.meta_edges: Dict[str, Dict[str, MetaEdge]] = dict()
@@ -155,7 +155,7 @@ class Onthology:
             source_id = str(source_id)
         return self.meta_edges.get(source_id, dict()).get(label, None)
 
-    META_ONTHOLOGY = Schema({
+    META_ONTOLOGY = Schema({
         # source
         str: schema.Or(None, {
             Opt('attributes'): schema.Or(None, {
@@ -194,9 +194,9 @@ class Onthology:
         return node
 
     @staticmethod
-    def validate_onthology_dict(onthology: Dict[str, Any], meta_onthology: Schema) -> Optional[NoReturn]:
+    def validate_ontology_dict(ontology: Dict[str, Any], meta_ontology: Schema) -> Optional[NoReturn]:
         try:
-            meta_onthology.validate(onthology)
+            meta_ontology.validate(ontology)
         except SchemaError as se:
             for error in se.errors:
                 if error:
@@ -219,7 +219,8 @@ class Onthology:
             source_node.attributes.add(attribute_label)
 
     @staticmethod
-    def _parse_attribute_labels(attribute_labels: Optional[Dict[str, Any]]) -> Tuple[Optional[Set[str]], Dict[Opt, Any]]:
+    def _parse_attribute_labels(attribute_labels: Optional[Dict[str, Any]]) \
+            -> Tuple[Optional[Set[str]], Dict[Opt, Any]]:
         attribute_labels_schema_dict = dict()
         if attribute_labels is None:
             edge_attributes = None
@@ -271,33 +272,33 @@ class Onthology:
                                   source_schema_dict=source_schema_dict)
         return source_schema_dict
 
-    def _parse_onthology_schema(self, onthology_dict: Dict[str, Any]):
-        onthology_schema_dict: Dict[Opt, schema.Or] = dict()
-        for source_label, edge_labels in onthology_dict.items():
+    def _parse_ontology_schema(self, ontology_dict: Dict[str, Any]):
+        ontology_schema_dict: Dict[Opt, schema.Or] = dict()
+        for source_label, edge_labels in ontology_dict.items():
             if edge_labels is None:
                 continue
             source_schema_dict = self._parse_source_schema(source_label, edge_labels)
-            onthology_schema_dict[Opt(source_label)] = schema.Or(None, {str: schema.Or(None, source_schema_dict)})
-        self.schema = Schema(schema.Or(None, onthology_schema_dict))
+            ontology_schema_dict[Opt(source_label)] = schema.Or(None, {str: schema.Or(None, source_schema_dict)})
+        self.schema = Schema(schema.Or(None, ontology_schema_dict))
 
     @staticmethod
-    def load_onthology_from_yaml(filename: str, meta_onthology: Schema = None) -> Union['Onthology', NoReturn]:
-        if meta_onthology is None:
-            meta_onthology = Onthology.META_ONTHOLOGY
+    def load_ontology_from_yaml(filename: str, meta_ontology: Schema = None) -> Union['Ontology', NoReturn]:
+        if meta_ontology is None:
+            meta_ontology = Ontology.META_ONTOLOGY
 
         with open(filename, 'r') as file:
-            onthology_dict = yaml.safe_load(file.read())
+            ontology_dict = yaml.safe_load(file.read())
 
-        if meta_onthology:
-            Onthology.validate_onthology_dict(onthology=onthology_dict,
-                                              meta_onthology=meta_onthology)
+        if meta_ontology:
+            Ontology.validate_ontology_dict(ontology=ontology_dict,
+                                            meta_ontology=meta_ontology)
 
-        onthology = Onthology()
-        if onthology_dict is None:
-            return onthology
+        ontology = Ontology()
+        if ontology_dict is None:
+            return ontology
 
-        onthology._parse_onthology_schema(onthology_dict)
-        return onthology
+        ontology._parse_ontology_schema(ontology_dict)
+        return ontology
 
     def _create_topology_for_known_source(self,
                                           topology: Topology,
@@ -317,7 +318,8 @@ class Onthology:
     def _load_topology_for_given_source_class(self,
                                               topology: Topology,
                                               source_class_id: str,
-                                              source_instances: Dict[str, Dict[str, Union[Any, Dict[str, Dict[str, Any]]]]]):
+                                              source_instances: Dict[
+                                                  str, Dict[str, Union[Any, Dict[str, Dict[str, Any]]]]]):
         source_cls: MetaNode = self.meta_nodes[source_class_id]
         for source_name, attribute_labels in source_instances.items():
             source_instance = Node(cls=source_cls, name=source_name)
@@ -339,8 +341,8 @@ class Onthology:
         with open(filename, 'r') as file:
             topology_dict = yaml.safe_load(file.read())
 
-        Onthology.validate_onthology_dict(onthology=topology_dict,
-                                          meta_onthology=self.schema)
+        Ontology.validate_ontology_dict(ontology=topology_dict,
+                                        meta_ontology=self.schema)
 
         topology = Topology()
         for source_class_id, source_instances in topology_dict.items():
@@ -350,13 +352,13 @@ class Onthology:
 
 if __name__ == '__main__':
     try:
-        onthology_model = Onthology.load_onthology_from_yaml(filename='onthology.yaml')
-        onthology_model.draw(output_filename='onthology')
+        ontology_model = Ontology.load_ontology_from_yaml(filename='ontology.yaml')
+        ontology_model.draw(output_filename='ontology')
     except SchemaError:
         sys.exit(1)
 
     try:
-        topology_model = onthology_model.load_topology(filename='topology.yaml')
+        topology_model = ontology_model.load_topology(filename='topology.yaml')
         topology_model.draw(output_filename='topology')
     except SchemaError:
         sys.exit(2)

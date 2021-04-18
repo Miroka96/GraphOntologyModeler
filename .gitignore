@@ -1,5 +1,5 @@
 venv/
 .idea
 *.yaml
-!onthology.yaml
+!ontology.yaml
 !topology.yaml
