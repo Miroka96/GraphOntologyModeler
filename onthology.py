@@ -9,13 +9,9 @@ from schema import Optional as Opt, Schema, SchemaError
 
 
 @functools.total_ordering
-class MetaNode:
-    def __init__(self, name: str, cls: str = 'generic', attributes: Optional[Set[str]] = None):
-        self.cls: str = cls
+class AbstractNode:
+    def __init__(self, name: str):
         self.name: str = name
-        if attributes is None:
-            attributes = set()
-        self.attributes: Set[str] = attributes
 
     def id(self) -> str:
         return self.name
@@ -27,21 +23,29 @@ class MetaNode:
         return self.id() < other.id()
 
     def to_label(self) -> str:
-        return f"<{{<i>{self.cls}</i><br /><b>{self.name}</b>|{'<br />'.join(sorted(self.attributes))}}}>"
+        return f"<{{<b>{self.name}</b>}}>"
 
     def draw(self, g: graphviz.Digraph):
         g.node(name=self.id(), label=self.to_label())
 
 
-@functools.total_ordering
-class MetaEdge:
-    def __init__(self, source: MetaNode, destination: MetaNode, label: str, attributes: Optional[Set[str]] = None):
-        self.source: MetaNode = source
-        self.destination: MetaNode = destination
-        self.label: str = label
+class MetaNode(AbstractNode):
+    def __init__(self, name: str, attributes: Optional[Set[str]] = None):
+        super().__init__(name=name)
         if attributes is None:
             attributes = set()
-        self.attributes = attributes
+        self.attributes: Set[str] = attributes
+
+    def to_label(self) -> str:
+        return super().to_label()[:-2] + f"|{'<br />'.join(sorted(self.attributes))}}}>"
+
+
+@functools.total_ordering
+class AbstractEdge:
+    def __init__(self, source: AbstractNode, destination: AbstractNode, label: str):
+        self.source: AbstractNode = source
+        self.destination: AbstractNode = destination
+        self.label: str = label
 
     def __str__(self) -> str:
         return f"{str(self.source)}_{str(self.destination)}_{self.label}"
@@ -50,23 +54,32 @@ class MetaEdge:
         return str(self) < str(other)
 
     def to_label(self) -> str:
-        return f"<<b>{self.label}</b>{''.join('<br />' + attribute for attribute in sorted(self.attributes))}>"
+        return f"<<b>{self.label}</b>>"
 
     def draw(self, g: graphviz.Digraph):
         g.edge(self.source.id(), self.destination.id(), self.to_label())
 
 
-class NodeInstance(MetaNode):
-    def __init__(self, cls: str, name: str):
-        super().__init__(name=name, cls=cls)
+class MetaEdge(AbstractEdge):
+    def __init__(self, source: MetaNode, destination: MetaNode, label: str, attributes: Optional[Set[str]] = None):
+        super().__init__(source, destination, label)
+        if attributes is None:
+            attributes = set()
+        self.attributes = attributes
+
+    def to_label(self) -> str:
+        return super().to_label()[:-1] + f"{''.join('<br />' + attribute for attribute in sorted(self.attributes))}>"
+
+
+class Node(AbstractNode):
+    def __init__(self, cls: AbstractNode, name: str):
+        super().__init__(name=name)
+        self.cls: AbstractNode = cls
         self.attribute_values: Dict[str, Any] = dict()
-        self.outgoing_edges: Set['EdgeInstance'] = set()
+        self.outgoing_edges: Set['Edge'] = set()
 
-    def add_edge(self, edge: 'EdgeInstance'):
+    def add_edge(self, edge: 'Edge'):
         self.outgoing_edges.add(edge)
-
-    def id(self) -> str:
-        return f"{self.cls}_{self.name}"
 
     def to_label(self) -> str:
         return f"""<{{<i>{self.cls}</i><br /><b>{self.name}</b>|{
@@ -79,29 +92,29 @@ class NodeInstance(MetaNode):
             edge.draw(g)
 
 
-class EdgeInstance(MetaEdge):
-    def __init__(self, source: NodeInstance, destination: NodeInstance, label: str,
-                 attributes: Optional[Dict[str, Any]] = None):
-        super().__init__(source, destination, label, attributes=None)
-        if attributes is None:
-            attributes = dict()
-        self.attribute_values: Dict[str, Any] = attributes
+class Edge(AbstractEdge):
+    def __init__(self, source: Node, destination: Node, label: str,
+                 attribute_values: Optional[Dict[str, Any]] = None):
+        super().__init__(source, destination, label)
+        if attribute_values is None:
+            attribute_values = dict()
+        self.attribute_values: Dict[str, Any] = attribute_values
 
     def to_label(self) -> str:
-        return f"""<<b>{self.label}</b>{
-        ''.join(f'<br align="left"/>{label} = {value}' for label, value in sorted(self.attribute_values.items()))}>"""
+        return super().to_label()[:-1] + f"""{''.join(f'<br align="left"/>{label} = {value}' 
+                                                      for label, value in sorted(self.attribute_values.items()))}>"""
 
 
 class Topology:
     def __init__(self):
-        self.instances: Dict[str, NodeInstance] = dict()
+        self.instances: Dict[str, Node] = dict()
 
-    def add_instance(self, instance: NodeInstance):
+    def add_instance(self, instance: Node):
         assert instance.id() not in self.instances
         self.instances[instance.id()] = instance
 
-    def get_instance(self, cls: str, name: str) -> NodeInstance:
-        new_instance = NodeInstance(cls=cls, name=name)
+    def get_instance(self, cls: AbstractNode, name: str) -> Node:
+        new_instance = Node(cls=cls, name=name)
         if new_instance.id() in self.instances:
             return self.instances[new_instance.id()]
         self.add_instance(new_instance)
@@ -121,22 +134,24 @@ class Topology:
 
 class Onthology:
     def __init__(self):
-        self.nodes: Dict[str, MetaNode] = dict()
-        self.edges: Dict[str, Dict[str, MetaEdge]] = dict()
+        self.meta_nodes: Dict[str, MetaNode] = dict()
+        self.meta_edges: Dict[str, Dict[str, MetaEdge]] = dict()
         self.schema: Optional[Schema] = None
 
     def add_edge(self, edge: MetaEdge):
-        if edge.source.id() not in self.edges:
-            self.edges[edge.source.id()] = dict()
+        if edge.source.id() not in self.meta_edges:
+            self.meta_edges[edge.source.id()] = dict()
 
-        self.edges[edge.source.id()][edge.label] = edge
+        self.meta_edges[edge.source.id()][edge.label] = edge
 
     def get_all_edges(self) -> Set[MetaEdge]:
-        return {edge for source_dict in self.edges.values()
+        return {edge for source_dict in self.meta_edges.values()
                 for edge in source_dict.values()}
 
-    def get_edge_by_source_and_label(self, source_id: str, label: str) -> Optional[MetaEdge]:
-        return self.edges.get(source_id, dict()).get(label, None)
+    def get_edge_by_source_and_label(self, source_id: Union[str, MetaNode], label: str) -> Optional[MetaEdge]:
+        if isinstance(source_id, MetaNode):
+            source_id = str(source_id)
+        return self.meta_edges.get(source_id, dict()).get(label, None)
 
     META_ONTHOLOGY = Schema({
         # source
@@ -159,7 +174,7 @@ class Onthology:
         g = graphviz.Digraph(format='png')
         g.node_attr.update({'shape': 'record'})
 
-        for node in sorted(self.nodes.values()):
+        for node in sorted(self.meta_nodes.values()):
             g.node(str(node), label=node.to_label())
 
         for edge in sorted(self.get_all_edges()):
@@ -170,10 +185,10 @@ class Onthology:
         print("Graph saved in", filename)
 
     def get_node(self, name: str) -> MetaNode:
-        if name in self.nodes:
-            return self.nodes[name]
+        if name in self.meta_nodes:
+            return self.meta_nodes[name]
         node = MetaNode(name)
-        self.nodes[name] = node
+        self.meta_nodes[name] = node
         return node
 
     @staticmethod
@@ -262,21 +277,23 @@ class Onthology:
             raise se
 
         topology = Topology()
-        for source_cls, source_instances in topology_dict.items():
+        for source_cls_id, source_instances in topology_dict.items():
+            source_cls = self.meta_nodes[source_cls_id]
             for source_name, attribute_labels in source_instances.items():
-                source_instance = NodeInstance(cls=source_cls, name=source_name)
+                source_instance = Node(cls=source_cls, name=source_name)
                 for attribute_label, attribute_values in attribute_labels.items():
-                    edge = self.get_edge_by_source_and_label(source_cls, attribute_label)
+                    edge = self.get_edge_by_source_and_label(source_cls_id, attribute_label)
                     if edge is None:
                         source_instance.attribute_values[attribute_label] = attribute_values
                     else:
-                        destination_cls = edge.destination.id()
+                        destination_cls_id = edge.destination.id()
+                        destination_cls = self.meta_nodes[destination_cls_id]
                         for destination_name, attributes in attribute_values.items():
                             destination_instance = topology.get_instance(cls=destination_cls, name=destination_name)
-                            new_edge = EdgeInstance(source=source_instance,
-                                                    destination=destination_instance,
-                                                    label=attribute_label,
-                                                    attributes=attributes)
+                            new_edge = Edge(source=source_instance,
+                                            destination=destination_instance,
+                                            label=attribute_label,
+                                            attribute_values=attributes)
                             source_instance.add_edge(new_edge)
                 topology.add_instance(source_instance)
         return topology

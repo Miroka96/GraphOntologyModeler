@@ -1,8 +1,8 @@
 digraph {
 	node [shape=record]
-	node_node01 [label=<{<i>node</i><br /><b>node01</b>|name = test}>]
-	node_node01 -> service_mysql [label=<<b>hosts</b><br align="left"/>distributed = True>]
-	node_node01 -> service_nextcloud [label=<<b>hosts</b>>]
-	service_mysql [label=<{<i>service</i><br /><b>mysql</b>|}>]
-	service_nextcloud [label=<{<i>service</i><br /><b>nextcloud</b>|}>]
+	mysql [label=<{<i>service</i><br /><b>mysql</b>|}>]
+	nextcloud [label=<{<i>service</i><br /><b>nextcloud</b>|}>]
+	node01 [label=<{<i>node</i><br /><b>node01</b>|name = test}>]
+	node01 -> mysql [label=<<b>hosts</b><br align="left"/>distributed = True>]
+	node01 -> nextcloud [label=<<b>hosts</b>>]
 }
