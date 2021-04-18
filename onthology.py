@@ -192,6 +192,21 @@ class Onthology:
         return node
 
     @staticmethod
+    def validate_onthology_dict(onthology: Dict[str, Any], meta_onthology: Schema) -> Optional[NoReturn]:
+        try:
+            meta_onthology.validate(onthology)
+        except SchemaError as se:
+            for error in se.errors:
+                if error:
+                    print(error)
+
+            for error in se.autos:
+                if error:
+                    print(error)
+
+            raise se
+
+    @staticmethod
     def load_onthology_from_yaml(filename: str, meta_onthology: Schema = None) -> Union['Onthology', NoReturn]:
         if meta_onthology is None:
             meta_onthology = Onthology.META_ONTHOLOGY
@@ -200,18 +215,8 @@ class Onthology:
             onthology_dict = yaml.safe_load(file.read())
 
         if meta_onthology:
-            try:
-                meta_onthology.validate(onthology_dict)
-            except SchemaError as se:
-                for error in se.errors:
-                    if error:
-                        print(error)
-
-                for error in se.autos:
-                    if error:
-                        print(error)
-
-                raise se
+            Onthology.validate_onthology_dict(onthology=onthology_dict,
+                                              meta_onthology=meta_onthology)
 
         onthology = Onthology()
         if onthology_dict is None:
@@ -261,53 +266,64 @@ class Onthology:
         onthology.schema = Schema(schema.Or(None, onthology_schema_dict))
         return onthology
 
+    def _create_topology_for_known_source(self,
+                                          topology: Topology,
+                                          destination_class_id: str,
+                                          destinations_and_attributes: Dict[str, Dict[str, Any]],
+                                          source_instance: Node,
+                                          edge_label: str):
+        destination_cls = self.meta_nodes[destination_class_id]
+        for destination_name, attributes in destinations_and_attributes.items():
+            destination_instance = topology.get_instance(cls=destination_cls, name=destination_name)
+            new_edge = Edge(source=source_instance,
+                            destination=destination_instance,
+                            label=edge_label,
+                            attribute_values=attributes)
+            source_instance.add_edge(new_edge)
+
+    def _load_topology_for_given_source_class(self,
+                                              topology: Topology,
+                                              source_class_id: str,
+                                              source_instances: Dict[str, Dict[str, Union[Any, Dict[str, Dict[str, Any]]]]]):
+        source_cls: MetaNode = self.meta_nodes[source_class_id]
+        for source_name, attribute_labels in source_instances.items():
+            source_instance = Node(cls=source_cls, name=source_name)
+            for attribute_label, attribute_values in attribute_labels.items():
+                edge = self.get_edge_by_source_and_label(source_class_id, attribute_label)
+                if edge is None:
+                    source_instance.attribute_values[attribute_label] = attribute_values
+                else:
+                    destination_cls_id = edge.destination.id()
+                    self._create_topology_for_known_source(topology=topology,
+                                                           destination_class_id=destination_cls_id,
+                                                           destinations_and_attributes=attribute_values,
+                                                           source_instance=source_instance,
+                                                           edge_label=attribute_label)
+
+            topology.add_instance(source_instance)
+
     def load_topology(self, filename: str) -> Topology:
         with open(filename, 'r') as file:
             topology_dict = yaml.safe_load(file.read())
 
-        try:
-            self.schema.validate(topology_dict)
-        except SchemaError as se:
-            for error in se.errors:
-                if error:
-                    print(error)
-            for error in se.autos:
-                if error:
-                    print(error)
-            raise se
+        Onthology.validate_onthology_dict(onthology=topology_dict,
+                                          meta_onthology=self.schema)
 
         topology = Topology()
-        for source_cls_id, source_instances in topology_dict.items():
-            source_cls = self.meta_nodes[source_cls_id]
-            for source_name, attribute_labels in source_instances.items():
-                source_instance = Node(cls=source_cls, name=source_name)
-                for attribute_label, attribute_values in attribute_labels.items():
-                    edge = self.get_edge_by_source_and_label(source_cls_id, attribute_label)
-                    if edge is None:
-                        source_instance.attribute_values[attribute_label] = attribute_values
-                    else:
-                        destination_cls_id = edge.destination.id()
-                        destination_cls = self.meta_nodes[destination_cls_id]
-                        for destination_name, attributes in attribute_values.items():
-                            destination_instance = topology.get_instance(cls=destination_cls, name=destination_name)
-                            new_edge = Edge(source=source_instance,
-                                            destination=destination_instance,
-                                            label=attribute_label,
-                                            attribute_values=attributes)
-                            source_instance.add_edge(new_edge)
-                topology.add_instance(source_instance)
+        for source_class_id, source_instances in topology_dict.items():
+            self._load_topology_for_given_source_class(topology, source_class_id, source_instances)
         return topology
 
 
 if __name__ == '__main__':
     try:
-        onthology = Onthology.load_onthology_from_yaml(filename='onthology.yaml')
-        onthology.draw(output_filename='onthology')
+        onthology_model = Onthology.load_onthology_from_yaml(filename='onthology.yaml')
+        onthology_model.draw(output_filename='onthology')
     except SchemaError:
         sys.exit(1)
 
     try:
-        topology = onthology.load_topology(filename='topology.yaml')
-        topology.draw(output_filename='topology')
+        topology_model = onthology_model.load_topology(filename='topology.yaml')
+        topology_model.draw(output_filename='topology')
     except SchemaError:
         sys.exit(2)
