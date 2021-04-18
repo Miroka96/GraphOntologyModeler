@@ -1,0 +1,9 @@
+---
+node:
+  node01:
+    name: test
+    hosts:
+      mysql:
+        distributed: True
+      nextcloud:
+
