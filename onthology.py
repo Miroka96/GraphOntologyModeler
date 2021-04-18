@@ -1,6 +1,6 @@
 import functools
 import sys
-from typing import Any, Dict, NoReturn, Optional, Set, Union
+from typing import Any, Dict, NoReturn, Optional, Set, Tuple, Union
 
 import graphviz
 import schema
@@ -29,17 +29,6 @@ class AbstractNode:
         g.node(name=self.id(), label=self.to_label())
 
 
-class MetaNode(AbstractNode):
-    def __init__(self, name: str, attributes: Optional[Set[str]] = None):
-        super().__init__(name=name)
-        if attributes is None:
-            attributes = set()
-        self.attributes: Set[str] = attributes
-
-    def to_label(self) -> str:
-        return super().to_label()[:-2] + f"|{'<br />'.join(sorted(self.attributes))}}}>"
-
-
 @functools.total_ordering
 class AbstractEdge:
     def __init__(self, source: AbstractNode, destination: AbstractNode, label: str):
@@ -60,6 +49,17 @@ class AbstractEdge:
         g.edge(self.source.id(), self.destination.id(), self.to_label())
 
 
+class MetaNode(AbstractNode):
+    def __init__(self, name: str, attributes: Optional[Set[str]] = None):
+        super().__init__(name=name)
+        if attributes is None:
+            attributes = set()
+        self.attributes: Set[str] = attributes
+
+    def to_label(self) -> str:
+        return super().to_label()[:-2] + f"|{'<br />'.join(sorted(self.attributes))}}}>"
+
+
 class MetaEdge(AbstractEdge):
     def __init__(self, source: MetaNode, destination: MetaNode, label: str, attributes: Optional[Set[str]] = None):
         super().__init__(source, destination, label)
@@ -72,10 +72,12 @@ class MetaEdge(AbstractEdge):
 
 
 class Node(AbstractNode):
-    def __init__(self, cls: AbstractNode, name: str):
+    def __init__(self, cls: AbstractNode, name: str, attribute_values: Optional[Dict[str, Any]]):
         super().__init__(name=name)
         self.cls: AbstractNode = cls
-        self.attribute_values: Dict[str, Any] = dict()
+        if attribute_values is None:
+            attribute_values = dict()
+        self.attribute_values: Dict[str, Any] = attribute_values
         self.outgoing_edges: Set['Edge'] = set()
 
     def add_edge(self, edge: 'Edge'):
@@ -207,6 +209,78 @@ class Onthology:
             raise se
 
     @staticmethod
+    def _parse_source_attributes(source_node: MetaNode,
+                                 destination_labels: Dict[str, Any],
+                                 source_schema_dict: Dict[Opt, Any]):
+        for attribute_label, validation_condition in destination_labels.items():
+            if type(validation_condition) == str:
+                validation_condition = eval(validation_condition)
+            source_schema_dict[Opt(attribute_label)] = validation_condition
+            source_node.attributes.add(attribute_label)
+
+    @staticmethod
+    def _parse_attribute_labels(attribute_labels: Optional[Dict[str, Any]]) -> Tuple[Optional[Set[str]], Dict[Opt, Any]]:
+        attribute_labels_schema_dict = dict()
+        if attribute_labels is None:
+            edge_attributes = None
+        else:
+            for attribute_label, validation_condition in attribute_labels.items():
+                if type(validation_condition) == str:
+                    validation_condition = eval(validation_condition)
+                attribute_labels_schema_dict[Opt(attribute_label)] = validation_condition
+            edge_attributes = set(attribute_labels.keys())
+        return edge_attributes, attribute_labels_schema_dict
+
+    def _parse_edges(self,
+                     source_node: MetaNode,
+                     edge_label: str,
+                     destination_labels: Dict[str, Optional[Dict[str, Any]]],
+                     source_schema_dict: Dict[Opt, Any]):
+        source_label = source_node.name
+        assert len(destination_labels) <= 1, \
+            f"edge label '{edge_label}' in source '{source_label}' has more than one destination"
+        assert len(destination_labels) > 0, \
+            f"edge label '{edge_label}' in source '{source_label}' is missing a destination"
+
+        destination_label, attribute_labels = next(iter(destination_labels.items()))
+        edge_attributes, attribute_labels_schema_dict = self._parse_attribute_labels(attribute_labels)
+
+        destination_node = self.get_node(destination_label)
+        self.add_edge(MetaEdge(source_node, destination_node, edge_label, attributes=edge_attributes))
+
+        source_schema_dict[Opt(edge_label)] = {str: schema.Or(None, attribute_labels_schema_dict)}
+
+    def _parse_source_schema(self,
+                             source_label: str,
+                             edge_labels: Dict[str, Optional[Dict[str, Union[Any, Optional[Dict[str, Any]]]]]]) \
+            -> Dict[Opt, Any]:
+        source_node: MetaNode = self.get_node(source_label)
+        source_schema_dict = dict()
+        for edge_label, destination_labels in edge_labels.items():
+            assert destination_labels is not None, \
+                f"edge label '{edge_label}' in source '{source_label}' has no children"
+
+            if edge_label == 'attributes':
+                self._parse_source_attributes(source_node=source_node,
+                                              destination_labels=destination_labels,
+                                              source_schema_dict=source_schema_dict)
+            else:
+                self._parse_edges(source_node=source_node,
+                                  edge_label=edge_label,
+                                  destination_labels=destination_labels,
+                                  source_schema_dict=source_schema_dict)
+        return source_schema_dict
+
+    def _parse_onthology_schema(self, onthology_dict: Dict[str, Any]):
+        onthology_schema_dict: Dict[Opt, schema.Or] = dict()
+        for source_label, edge_labels in onthology_dict.items():
+            if edge_labels is None:
+                continue
+            source_schema_dict = self._parse_source_schema(source_label, edge_labels)
+            onthology_schema_dict[Opt(source_label)] = schema.Or(None, {str: schema.Or(None, source_schema_dict)})
+        self.schema = Schema(schema.Or(None, onthology_schema_dict))
+
+    @staticmethod
     def load_onthology_from_yaml(filename: str, meta_onthology: Schema = None) -> Union['Onthology', NoReturn]:
         if meta_onthology is None:
             meta_onthology = Onthology.META_ONTHOLOGY
@@ -222,48 +296,7 @@ class Onthology:
         if onthology_dict is None:
             return onthology
 
-        onthology_schema_dict = dict()
-        for source_label, edge_labels in onthology_dict.items():
-            source_node = onthology.get_node(source_label)
-
-            if edge_labels is None:
-                continue
-
-            source_schema_dict = dict()
-            for edge_label, destination_labels in edge_labels.items():
-                assert destination_labels is not None, \
-                    f"edge label '{edge_label}' in source '{source_label}' has no children"
-
-                if edge_label == 'attributes':
-                    for attribute_label, validation_condition in destination_labels.items():
-                        if type(validation_condition) == str:
-                            validation_condition = eval(validation_condition)
-                        source_schema_dict[Opt(attribute_label)] = validation_condition
-                        source_node.attributes.add(attribute_label)
-                else:
-                    assert len(destination_labels) <= 1, \
-                        f"edge label '{edge_label}' in source '{source_label}' has more than one destination"
-                    assert len(destination_labels) > 0, \
-                        f"edge label '{edge_label}' in source '{source_label}' is missing a destination"
-
-                    destination_label, attribute_labels = next(iter(destination_labels.items()))
-
-                    attribute_labels_schema_dict = dict()
-                    if attribute_labels is None:
-                        edge_attributes = None
-                    else:
-                        for attribute_label, validation_condition in attribute_labels.items():
-                            if type(validation_condition) == str:
-                                validation_condition = eval(validation_condition)
-                            attribute_labels_schema_dict[Opt(attribute_label)] = validation_condition
-                        edge_attributes = set(attribute_labels.keys())
-
-                    destination_node = onthology.get_node(destination_label)
-                    onthology.add_edge(MetaEdge(source_node, destination_node, edge_label, attributes=edge_attributes))
-
-                    source_schema_dict[Opt(edge_label)] = {str: schema.Or(None, attribute_labels_schema_dict)}
-            onthology_schema_dict[Opt(source_label)] = schema.Or(None, {str: schema.Or(None, source_schema_dict)})
-        onthology.schema = Schema(schema.Or(None, onthology_schema_dict))
+        onthology._parse_onthology_schema(onthology_dict)
         return onthology
 
     def _create_topology_for_known_source(self,
