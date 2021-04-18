@@ -1,12 +1,13 @@
 ---
-nodes:
+node:
   attributes:
     name: 'str'
-  interfaces:
-    net:
-  services:
-    hosts:
-interfaces:
+  networksOn:
+    interface:
+  hosts:
+    service:
+      distributed: 'bool'
+interface:
   attributes:
     name: 'str'
     ip: >
@@ -19,27 +20,30 @@ interfaces:
       ^(?:[0-9a-fA-F]{1,4}:){0,4}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:)?[0-9a-fA-F]{1,4}$|
       ^(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}$|
       ^(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}::$'
-  networks:
-    isConnectedTo:
-  interfaces:
-    isConnectedTo:
-    forward:
-  ports:
-    hosts:
-    canReach:
-services:
+  isConnectedTo:
+    network:
+  canTalkTo:
+    interface:
+  forwardsTo:
+    interface:
+  hosts:
+    port:
+  canReach:
+    port:
+service:
   attributes:
     name: 'str'
-  services:
-    uses:
-  ports:
-    bindsTo:
-networks:
+  uses:
+    service:
+  bindsTo:
+    port:
+network:
   attributes:
     name: 'str'
-  ports:
-    canReach:
-    hosts:
-ports:
+  canReach:
+    port:
+  hosts:
+    port:
+port:
   attributes:
     name: 'int'
