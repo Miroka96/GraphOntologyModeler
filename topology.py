@@ -1,7 +1,7 @@
 import functools
 from typing import Iterable, List, Set, Tuple
 
-import graphviz as gv
+import graphviz
 
 
 @functools.total_ordering
@@ -16,7 +16,6 @@ class Network:
 
 @functools.total_ordering
 class Interface:
-
     def __init__(self, node: 'Node', name: str, ip: str = "?"):
         self.node: 'Node' = node
         self.name: str = name
@@ -52,11 +51,11 @@ class Interface:
     def get_connections(self) -> List[Tuple['Interface']]:
         return [tuple(sorted({self, interface})) for interface in self.connected_to]
 
-    def draw(self, g: gv.Digraph):
+    def draw(self, g: graphviz.Digraph):
         g.node(name=str(self), label=self.to_label())
 
     @staticmethod
-    def draw_edges(g: gv.Digraph, interfaces: Iterable['Interface']):
+    def draw_edges(g: graphviz.Digraph, interfaces: Iterable['Interface']):
         connections = set()
         for interface in interfaces:
             connections.update(interface.get_connections())
@@ -90,11 +89,11 @@ class Service:
     def __lt__(self, other: 'Service') -> bool:
         return str(self) < str(other)
 
-    def draw(self, g: gv.Digraph):
+    def draw(self, g: graphviz.Digraph):
         g.node(name=str(self), label=self.to_label())
 
     @staticmethod
-    def draw_edges(g: gv.Digraph, services: Iterable['Service']):
+    def draw_edges(g: graphviz.Digraph, services: Iterable['Service']):
         for service in services:
             for use in service.uses:
                 g.edge(str(service), str(use), label="uses")
@@ -142,11 +141,11 @@ class Node:
     def to_label(self) -> str:
         return f"<{{<b>{type(self).__name__}</b><br />{self.hostname}}}>"
 
-    def draw(self, g: gv.Digraph):
+    def draw(self, g: graphviz.Digraph):
         g.node(name=str(self), label=self.to_label())
 
     @staticmethod
-    def draw_edges(g: gv.Digraph, nodes: Iterable['Node']):
+    def draw_edges(g: graphviz.Digraph, nodes: Iterable['Node']):
         for node in nodes:
             for interface in node.interfaces:
                 g.edge(str(node), str(interface), label="net")
@@ -184,7 +183,7 @@ class Topology:
         return f"<{type(self).__name__}>\n{self.environment}"
 
     def draw(self, output_filename='topology'):
-        g = gv.Digraph(format='png')
+        g = graphviz.Digraph(format='png')
         g.node_attr.update({'shape': 'record'})
 
         for node in self.nodes:

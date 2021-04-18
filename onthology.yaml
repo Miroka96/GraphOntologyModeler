@@ -1,0 +1,45 @@
+---
+nodes:
+  attributes:
+    name: 'str'
+  interfaces:
+    net:
+  services:
+    hosts:
+interfaces:
+  attributes:
+    name: 'str'
+    ip: >
+      r'^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|
+      ^::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}$|
+      ^[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}$|
+      ^[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,4}[0-9a-fA-F]{1,4}$|
+      ^(?:[0-9a-fA-F]{1,4}:){0,2}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,3}[0-9a-fA-F]{1,4}$|
+      ^(?:[0-9a-fA-F]{1,4}:){0,3}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,2}[0-9a-fA-F]{1,4}$|
+      ^(?:[0-9a-fA-F]{1,4}:){0,4}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:)?[0-9a-fA-F]{1,4}$|
+      ^(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}$|
+      ^(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}::$'
+  networks:
+    isConnectedTo:
+  interfaces:
+    isConnectedTo:
+    forward:
+  ports:
+    hosts:
+    canReach:
+services:
+  attributes:
+    name: 'str'
+  services:
+    uses:
+  ports:
+    bindsTo:
+networks:
+  attributes:
+    name: 'str'
+  ports:
+    canReach:
+    hosts:
+ports:
+  attributes:
+    name: 'int'
