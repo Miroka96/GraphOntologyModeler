@@ -13,7 +13,7 @@ digraph {
 	network -> port [label=<<b>canReach</b>>]
 	network -> port [label=<<b>hosts</b>>]
 	"node" -> interface [label=<<b>networksOn</b>>]
-	"node" -> service [label=<<b>hosts</b><br />distributed>]
+	"node" -> service [label=<<b>hosts</b><br align="left"/>distributed>]
 	service -> port [label=<<b>bindsTo</b>>]
 	service -> service [label=<<b>uses</b>>]
 }

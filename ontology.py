@@ -1,11 +1,16 @@
 import functools
 import sys
 from typing import Any, Dict, NoReturn, Optional, Set, Tuple, Union
+import typing
 
 import graphviz
 import schema
 import yaml
 from schema import Optional as Opt, Schema, SchemaError
+
+
+LiteralType = Union[int, float, complex, str, list, tuple, set, dict, bytes, bytearray, frozenset]
+LITERAL_TYPES: Set[type] = set(typing.get_args(LiteralType))
 
 
 @functools.total_ordering
@@ -61,14 +66,20 @@ class MetaNode(AbstractNode):
 
 
 class MetaEdge(AbstractEdge):
-    def __init__(self, source: MetaNode, destination: MetaNode, label: str, attributes: Optional[Set[str]] = None):
+    def __init__(self,
+                 source: MetaNode,
+                 destination: MetaNode,
+                 label: str,
+                 attributes: Optional[Dict[str, Optional[LiteralType]]] = None):
         super().__init__(source, destination, label)
         if attributes is None:
-            attributes = set()
-        self.attributes = attributes
+            attributes = dict()
+        self.attributes: Dict[str, Optional[LiteralType]] = attributes
 
     def to_label(self) -> str:
-        return super().to_label()[:-1] + f"{''.join('<br />' + attribute for attribute in sorted(self.attributes))}>"
+        return super().to_label()[:-1] + f"""{''.join(f'<br align="left"/>{label}'
+                                                      f'{f" = {value}" if value is not None else ""}'
+                                                      for label, value in sorted(self.attributes.items()))}>"""
 
 
 class Node(AbstractNode):
@@ -220,16 +231,22 @@ class Ontology:
 
     @staticmethod
     def _parse_attribute_labels(attribute_labels: Optional[Dict[str, Any]]) \
-            -> Tuple[Optional[Set[str]], Dict[Opt, Any]]:
+            -> Tuple[Optional[Dict[str, Optional[LiteralType]]], Dict[Opt, Any]]:
         attribute_labels_schema_dict = dict()
         if attribute_labels is None:
             edge_attributes = None
         else:
+            edge_attributes = dict()
             for attribute_label, validation_condition in attribute_labels.items():
                 if type(validation_condition) == str:
                     validation_condition = eval(validation_condition)
                 attribute_labels_schema_dict[Opt(attribute_label)] = validation_condition
-            edge_attributes = set(attribute_labels.keys())
+
+                # do not visualize validation functions
+                if not type(validation_condition) in LITERAL_TYPES:
+                    validation_condition = None
+
+                edge_attributes[attribute_label] = validation_condition
         return edge_attributes, attribute_labels_schema_dict
 
     def _parse_edges(self,
